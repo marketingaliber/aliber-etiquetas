@@ -18,4 +18,9 @@ contextBridge.exposeInMainWorld("aliber", {
   escolherPasta: (atual) => chamar("pasta:escolher", atual),
   abrirPastaDados: () => chamar("pasta:abrirDados"),
   imprimir: (dadosImpressao) => chamar("imprimir", dadosImpressao),
+  entrarTecnico: (senha) => chamar("tecnico:entrar", senha),
+  versoes: (chave) => chamar("versoes:listar", chave),
+  instalarVersao: (chave, versao) => chamar("versoes:instalar", chave, versao),
+  estadoAtualizacao: () => chamar("versoes:estado"),
+  aoMudarAtualizacao: (fn) => ipcRenderer.on("atualizacao", (_e, estado) => fn(estado)),
 });

@@ -28,6 +28,27 @@ passo a passo, e entregue sempre o resultado pronto.
 - `testes/electron.cjs` abre o app real com xvfb, banco PDV+ falso e impressora de rede falsa
   (`testes/falsa-impressora.cjs`) e confere os bytes recebidos.
 
-## Gerar instalador
-`WINEDEBUG=-all npx electron-builder --win nsis --x64 --publish never` (precisa de wine).
-Sai em `instalador/AliberEtiquetas-Instalador-X.Y.Z.exe`.
+## Impressoras (config)
+- `impressoras: [{ id, nome, tipo windows|rede, nomeWindows, ip, porta, bobina 80|58, corte,
+  espacoMm, modoImagem padrao|compativel }]` + `impressoraAtual`. A 1.0.0 tinha uma só
+  (impressora/bobina/corte soltos); `core/dados.js > migrar` converte sem perder nada.
+- Modo de imagem "compativel" = ESC * 33 em faixas de 24 pontos (58 mm simples).
+
+## Ícone
+`build/icone.svg` (A vermelho traçado do logo + etiqueta azul, fundo branco) ->
+`build/icon.ico` (16 a 256), `build/icon.png`, `app/assets/icon.png`.
+
+## Versões e atualização (igual ao Aliber Print)
+- Código E instaladores ficam neste repositório público `marketingaliber/aliber-etiquetas`.
+- NÃO há aviso nem verificação automática. O técnico troca em Configurações > Sobre >
+  Escolher versão (senha do técnico: mesmo hash do Aliber Print em `core/marca.json`).
+  Lista vem das releases; instalar aponta o electron-updater (generic) para a release.
+- Publicar uma versão:
+  1. Aumentar `version` no package.json; notas em `ferramentas/NOTAS-X.Y.Z.md`.
+  2. Commit e push na main.
+  3. `WINEDEBUG=-all npx electron-builder --win nsis --x64 --publish never` (precisa de wine).
+  4. Esta sessão NÃO cria releases: enviar para o ramo `versao-X.Y.Z` (órfão, só os anexos)
+     `AliberEtiquetas-Instalador.exe`, `.blockmap`, `latest.yml` e `NOTAS.md`. O dono clica em
+     Actions > Publicar versão > Run workflow (informa X.Y.Z); o workflow cria a release e
+     apaga o ramo.
+- O `latest.yml` precisa ser o gerado pelo build da mesma versão (tem o hash do instalador).

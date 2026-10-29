@@ -1,7 +1,7 @@
 {
   "name": "aliber-etiquetas",
   "productName": "Aliber Etiquetas",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Etiquetas de gôndola da Aliber Informática / Sistemas",
   "author": "Aliber Informática / Sistemas",
   "private": true,
@@ -13,10 +13,10 @@
     "instalador": "electron-builder --win nsis --x64 --publish never"
   },
   "devDependencies": {
-    "electron": "^39.8.10",
-    "electron-builder": "^26.0.12",
     "@fontsource/barlow": "^5.3.0",
-    "@fontsource/barlow-condensed": "^5.3.0"
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "electron": "^39.8.10",
+    "electron-builder": "^26.0.12"
   },
   "build": {
     "appId": "br.com.aliber.etiquetas",
@@ -53,14 +53,24 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
-      "artifactName": "AliberEtiquetas-Instalador-${version}.exe",
+      "artifactName": "AliberEtiquetas-Instalador.exe",
       "uninstallDisplayName": "Aliber Etiquetas",
       "deleteAppDataOnUninstall": false
     },
-    "publish": null
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "marketingaliber",
+        "repo": "aliber-etiquetas",
+        "releaseType": "release"
+      }
+    ]
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/marketingaliber/aliber-etiquetas.git"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
   }
 }

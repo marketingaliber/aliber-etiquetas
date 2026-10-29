@@ -92,6 +92,7 @@
     </div>
 
     <div class="imprimir-barra">
+      <label class="imp-escolha" id="escolhaImp">Imprimir em <select id="impAtual"></select></label>
       <label class="copias">Cópias <input type="number" id="copiasAtual" min="1" max="50" value="1"></label>
       <button class="btn" id="btnImprimirEsta" disabled>Imprimir esta</button>
       <button class="btn primario" id="btnImprimirSel" disabled>
@@ -104,34 +105,11 @@
 
 <main id="verConfig" class="ver config" hidden>
   <div class="config-grade">
-    <section class="cartao">
-      <h3>Impressora</h3>
-      <div class="seg" data-cfg="impressora.tipo">
-        <button data-v="windows">USB (impressora do Windows)</button><button data-v="rede">Rede (IP)</button>
-      </div>
-      <div data-mostrar="windows">
-        <label class="campo">Impressora
-          <div class="com-botao"><select id="cfgImpressora"></select><button class="btn fantasma" id="btnListarImp" title="Procurar de novo">Procurar</button></div>
-        </label>
-        <p class="nota">Use a Elgin i8 ou i9 instalada com o driver da Elgin. O app envia a etiqueta direto (modo RAW), sem mexer nas configurações do driver.</p>
-      </div>
-      <div data-mostrar="rede" class="grade2">
-        <label class="campo">IP da impressora<input data-cfg-in="impressora.ip" placeholder="192.168.0.100"></label>
-        <label class="campo">Porta<input data-cfg-in="impressora.porta" inputmode="numeric" placeholder="9100"></label>
-      </div>
-      <button class="btn" id="btnTeste">Imprimir etiqueta de teste</button>
-    </section>
-
-    <section class="cartao">
-      <h3>Papel e corte</h3>
-      <label class="campo">Largura da bobina
-        <div class="seg" data-cfg="bobina"><button data-v="80">80 mm (i8 / i9)</button><button data-v="58">58 mm</button></div>
-      </label>
-      <label class="campo">Corte da guilhotina
-        <div class="seg" data-cfg="corte"><button data-v="total">Total</button><button data-v="parcial">Parcial</button><button data-v="nenhum">Sem corte</button></div>
-      </label>
-      <label class="campo">Espaço extra entre etiquetas (mm)<input data-cfg-in="espacoMm" inputmode="numeric" placeholder="0"></label>
-      <p class="nota">Se a guilhotina não cortar a etiqueta toda (deixando uma "aba"), use corte Parcial. Se estiver cortando em cima do texto, aumente o espaço extra.</p>
+    <section class="cartao impressoras-cartao">
+      <div class="cartao-cab"><h3>Impressoras</h3><button class="btn fantasma" id="btnListarImp" title="Procurar de novo as impressoras do Windows">Procurar impressoras do Windows</button></div>
+      <p class="nota topo-nota">Cadastre cada impressora que vai imprimir etiquetas: a Elgin i8/i9 (bobina 80 mm) e, se quiser, uma de bobina 58 mm. Na hora de imprimir você escolhe em qual sai.</p>
+      <div id="listaImpressoras"></div>
+      <button class="btn" id="btnAddImp"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Adicionar impressora</button>
     </section>
 
     <section class="cartao">
@@ -157,6 +135,7 @@
     <section class="cartao">
       <h3>Sobre</h3>
       <p class="nota" id="infoApp"></p>
+      <div class="linha-versao"><span id="txtVersao"></span><button class="btn" id="btnVersao">Escolher versão</button></div>
       <div class="com-botao">
         <select id="cfgTema"><option value="escuro">Tema escuro</option><option value="claro">Tema claro</option></select>
         <button class="btn fantasma" id="btnPastaDados">Abrir pasta de dados</button>
@@ -181,6 +160,61 @@
       <button class="btn primario" value="salvar" id="avSalvar">Salvar</button>
     </div>
   </form>
+</dialog>
+
+<template id="tplImpressora">
+  <div class="imp">
+    <div class="imp-cab">
+      <input class="imp-nome" data-k="nome" maxlength="30" placeholder="Nome (ex.: Elgin i9 do caixa)">
+      <button class="link" data-acao="teste">Imprimir teste</button>
+      <button class="link perigo" data-acao="remover">Remover</button>
+    </div>
+    <div class="grade2">
+      <div class="campo">Ligada por
+        <div class="seg" data-k="tipo"><button data-v="windows">USB (Windows)</button><button data-v="rede">Rede (IP)</button></div>
+      </div>
+      <div class="campo">Bobina
+        <div class="seg" data-k="bobina"><button data-v="80">80 mm</button><button data-v="58">58 mm</button></div>
+      </div>
+      <label class="campo largo" data-se="windows">Impressora do Windows<select data-k="nomeWindows"></select></label>
+      <label class="campo" data-se="rede">IP da impressora<input data-k="ip" placeholder="192.168.0.100"></label>
+      <label class="campo" data-se="rede">Porta<input data-k="porta" inputmode="numeric" placeholder="9100"></label>
+      <div class="campo">Corte da guilhotina
+        <div class="seg" data-k="corte"><button data-v="total">Total</button><button data-v="parcial">Parcial</button><button data-v="nenhum">Sem</button></div>
+      </div>
+      <label class="campo">Espaço extra antes do corte (mm)<input data-k="espacoMm" inputmode="numeric" placeholder="0"></label>
+      <label class="campo largo">Modo de imagem
+        <select data-k="modoImagem">
+          <option value="padrao">Padrão (Elgin i8/i9 e a maioria)</option>
+          <option value="compativel">Compatível (se sair "lixo" ou nada numa 58 mm simples)</option>
+        </select>
+      </label>
+    </div>
+  </div>
+</template>
+
+<dialog id="dlgTecnico">
+  <form method="dialog" class="dlg" id="formTecnico">
+    <h3>Área do técnico</h3>
+    <p class="nota">Para trocar a versão do Aliber Etiquetas, digite a senha do técnico da Aliber.</p>
+    <label class="campo">Senha<input type="password" id="senhaTecnico" autocomplete="off"></label>
+    <p class="nota erro" id="erroTecnico"></p>
+    <div class="dlg-acoes">
+      <button class="btn fantasma" value="cancelar" formnovalidate>Cancelar</button>
+      <button class="btn primario" value="entrar">Entrar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgVersoes">
+  <div class="dlg">
+    <h3>Escolher versão</h3>
+    <p class="nota" id="versoesAtual"></p>
+    <div id="versoesProgresso" class="progresso" hidden></div>
+    <div id="versoesLista" class="versoes"></div>
+    <p class="nota erro" id="erroVersoes"></p>
+    <div class="dlg-acoes"><button class="btn fantasma" id="btnFecharVersoes">Fechar</button></div>
+  </div>
 </dialog>
 
 <div class="avisos" id="avisos" aria-live="polite"></div>

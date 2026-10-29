@@ -9,11 +9,14 @@ let pasta = null;
 export function iniciar(p) { pasta = p; fs.mkdirSync(pasta, { recursive: true }); }
 export const pastaDados = () => pasta;
 
+// Cada impressora tem a própria bobina (80 ou 58 mm), corte e modo de imagem.
+export const IMPRESSORA_PADRAO = {
+  id: "", nome: "", tipo: "windows", nomeWindows: "", ip: "", porta: 9100,
+  bobina: 80, corte: "total", espacoMm: 0, modoImagem: "padrao",
+};
 export const CONFIG_PADRAO = {
-  impressora: { tipo: "windows", nomeWindows: "", ip: "", porta: 9100 },
-  bobina: 80,
-  corte: "total",
-  espacoMm: 0,
+  impressoras: [],
+  impressoraAtual: "",
   pastaPdv: "C:\\PDV+",
   usarPdv: true,
   unidadePadrao: "kg",
@@ -48,8 +51,33 @@ function mesclar(base, extra) {
   return out;
 }
 
-export function config() { return mesclar(CONFIG_PADRAO, ler("config.json", {})); }
-export function salvarConfig(novo) { const c = mesclar(config(), novo); gravar("config.json", c); return c; }
+// Versão 1.0.0 tinha uma impressora só (impressora + bobina + corte soltos).
+function migrar(bruto) {
+  const c = { ...bruto };
+  if (!Array.isArray(c.impressoras) || !c.impressoras.length) {
+    const v = c.impressora || {};
+    c.impressoras = [{
+      ...IMPRESSORA_PADRAO, id: "imp1", nome: "Impressora 1",
+      tipo: v.tipo || "windows", nomeWindows: v.nomeWindows || "", ip: v.ip || "", porta: Number(v.porta) || 9100,
+      bobina: Number(c.bobina) === 58 ? 58 : 80, corte: c.corte || "total", espacoMm: Number(c.espacoMm) || 0,
+    }];
+    c.impressoraAtual = "imp1";
+  }
+  delete c.impressora; delete c.bobina; delete c.corte; delete c.espacoMm;
+  c.impressoras = c.impressoras.filter((i) => i && i.id).map((i) => ({ ...IMPRESSORA_PADRAO, ...i, bobina: Number(i.bobina) === 58 ? 58 : 80 }));
+  if (!c.impressoras.some((i) => i.id === c.impressoraAtual)) c.impressoraAtual = c.impressoras[0]?.id || "";
+  return c;
+}
+
+export function config() { return mesclar(CONFIG_PADRAO, migrar(ler("config.json", {}))); }
+// "impressoras" chega sempre inteira (lista), o resto é mesclado
+export function salvarConfig(novo) {
+  const atual = config();
+  const c = migrar({ ...mesclar(atual, { ...novo, impressoras: undefined }), impressoras: Array.isArray(novo.impressoras) ? novo.impressoras : atual.impressoras });
+  gravar("config.json", c);
+  return c;
+}
+export const impressora = (c, id) => c.impressoras.find((i) => i.id === id) || c.impressoras.find((i) => i.id === c.impressoraAtual) || null;
 
 // produtos.json: { manuais: [{id, nome, preco, unidade, complemento, codigo}],
 //                  ajustes: { id: {nome, complemento, unidade, preco, precoDe, oferta, copias} },

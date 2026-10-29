@@ -148,9 +148,11 @@ function desenharSelecao() {
 
 /* ---------------- modelo e prévia ---------------- */
 
-function modeloAtual() {
+const impAtual = (id) => estado.cfg.impressoras.find((i) => i.id === (id || estado.cfg.impressoraAtual)) || estado.cfg.impressoras[0] || null;
+
+function modeloAtual(impId) {
   const c = estado.cfg;
-  return { ...c.modelo, bobina: Number(c.bobina) || 80, loja: c.loja, mostrarData: c.mostrarData, textoData: c.textoData, textoOferta: c.textoOferta, mostrarCodigo: c.mostrarCodigo };
+  return { ...c.modelo, bobina: Number(impAtual(impId)?.bobina) === 58 ? 58 : 80, loja: c.loja, mostrarData: c.mostrarData, textoData: c.textoData, textoOferta: c.textoOferta, mostrarCodigo: c.mostrarCodigo };
 }
 
 function marcarSegmentos() {
@@ -169,8 +171,10 @@ function desenharPrevia() {
   E.binarizar(E.desenharEtiqueta(i || exemplo, modeloAtual(), c));
   const deitada = estado.cfg.modelo.formato === "deitada";
   // tamanho na tela proporcional ao papel (as grandes ficam maiores)
+  // mesma escala para 80 e 58 mm: a de 58 aparece mais estreita, como no papel
   const maxW = $(".previa-caixa").clientWidth - 60;
-  const escala = Math.min(maxW / c.width, (deitada ? 380 : 520) / c.height, 0.9);
+  const ref = deitada ? c.width : 576;
+  const escala = Math.min(maxW / ref, (deitada ? 380 : 520) / (deitada ? 576 : c.height), 0.9);
   c.style.width = Math.round(c.width * escala) + "px";
   $("#dicaPrevia").textContent = i ? (deitada ? "A etiqueta deitada sai girada no papel; corte e vire para ler assim." : "Prévia em tamanho proporcional, igual ao papel.") : "Exemplo. Escolha um produto na lista para ver a etiqueta dele.";
 }
@@ -244,14 +248,16 @@ const salvarEdicao = debounce(async () => {
 
 /* ---------------- impressão ---------------- */
 
-function bitsDe(i) {
-  const m = modeloAtual();
+function bitsDe(i, impId) {
+  const m = modeloAtual(impId);
   const c = E.desenharEtiqueta(i, m);
   return E.paraBits(E.naPosicaoDoPapel(c, m.formato));
 }
 
-async function imprimir(lista) {
+async function imprimir(lista, impId = estado.cfg.impressoraAtual) {
   if (estado.imprimindo || !lista.length) return;
+  const imp = impAtual(impId);
+  if (!imp) { aviso("Cadastre a impressora em Configurações.", "ruim"); return; }
   estado.imprimindo = true;
   desenharSelecao();
   const total = lista.reduce((s, x) => s + x.copias, 0);
@@ -262,16 +268,16 @@ async function imprimir(lista) {
     const enviar = async () => {
       if (!fila.length) return;
       const itens = [...new Map(fila.filter((f) => f.i.id !== "teste").map((f) => [f.i.id, { id: f.i.id, preco: f.i.preco }])).values()];
-      const r = await api.imprimir({ etiquetas: fila.map((f) => f.bits), itens });
+      const r = await api.imprimir({ etiquetas: fila.map((f) => f.bits), itens, impressoraId: imp.id });
       if (r.impressos) estado.local.impressos = r.impressos;
       fila = [];
     };
     for (const { i, copias } of lista) {
-      const bits = bitsDe(i);
+      const bits = bitsDe(i, imp.id);
       for (let k = 0; k < copias; k++) { fila.push({ i, bits }); if (fila.length >= LOTE) await enviar(); }
     }
     await enviar();
-    aviso(`${total} etiqueta${total > 1 ? "s" : ""} enviada${total > 1 ? "s" : ""} para a impressora.`, "ok");
+    aviso(`${total} etiqueta${total > 1 ? "s" : ""} enviada${total > 1 ? "s" : ""} para ${imp.nome || "a impressora"}.`, "ok");
     montarItens();
     desenharLista();
     abrirEditor();
@@ -339,31 +345,206 @@ function preencherConfig() {
   for (const el of $$("[data-cfg-in]")) el.value = pegar(c, el.dataset.cfgIn) ?? "";
   for (const el of $$("[data-cfg-chk]")) el.checked = !!pegar(c, el.dataset.cfgChk);
   opcoesUnidade($("#cfgUnidadePadrao"), c.unidadePadrao);
-  for (const el of $$("[data-mostrar]")) el.hidden = el.dataset.mostrar !== c.impressora.tipo;
+  desenharImpressoras();
   $("#cfgTema").value = c.tema;
   document.documentElement.dataset.tema = c.tema;
 }
 
+// ----- impressoras (cada uma com bobina, corte e modo de imagem próprios)
+estado.impWindows = null;   // lista do Windows (null = ainda não procurou)
+
 async function listarImpressoras() {
-  const sel = $("#cfgImpressora");
-  sel.replaceChildren(new Option("Procurando impressoras…", ""));
+  estado.impWindows = "procurando";
+  desenharImpressoras();
   try {
-    const lista = await api.impressoras();
-    const atual = estado.cfg.impressora.nomeWindows;
-    const ops = lista.map((p) => new Option(`${p.nome}${p.driver ? "  —  " + p.driver : ""}`, p.nome));
-    if (atual && !lista.some((p) => p.nome === atual)) ops.unshift(new Option(`${atual} (não encontrada agora)`, atual));
-    ops.unshift(new Option(lista.length ? "Escolha a impressora…" : "Nenhuma impressora encontrada", ""));
-    sel.replaceChildren(...ops);
-    sel.value = atual || "";
+    estado.impWindows = await api.impressoras();
     // sugere a Elgin sozinha na primeira vez
-    if (!atual) {
-      const elgin = lista.find((p) => /elgin|i9|i8/i.test(p.nome + " " + p.driver));
-      if (elgin) { sel.value = elgin.nome; await salvarCfg({ impressora: { nomeWindows: elgin.nome } }); aviso(`Impressora escolhida: ${elgin.nome}`, "ok"); }
+    const imps = estado.cfg.impressoras;
+    if (imps.length === 1 && imps[0].tipo === "windows" && !imps[0].nomeWindows) {
+      const elgin = estado.impWindows.find((p) => /elgin|i9|i8/i.test(p.nome + " " + p.driver));
+      if (elgin) { await salvarImpressora(imps[0].id, { nomeWindows: elgin.nome, nome: imps[0].nome === "Impressora 1" ? elgin.nome : imps[0].nome }); aviso(`Impressora escolhida: ${elgin.nome}`, "ok"); }
     }
   } catch (e) {
-    sel.replaceChildren(new Option("Não consegui listar as impressoras", ""));
-    aviso(e.message, "ruim");
+    estado.impWindows = [];
+    aviso("Não consegui listar as impressoras do Windows: " + e.message, "ruim");
   }
+  desenharImpressoras();
+}
+
+async function salvarImpressora(id, mudanca) {
+  const lista = estado.cfg.impressoras.map((i) => (i.id === id ? { ...i, ...mudanca } : i));
+  await salvarCfg({ impressoras: lista });
+  desenharEscolhaImp();
+  marcarSegmentos();
+  desenharPrevia();
+}
+
+function opcoesWindows(sel, atual) {
+  const w = estado.impWindows;
+  const ops = [];
+  if (w === "procurando") ops.push(new Option("Procurando impressoras…", atual || ""));
+  else if (!Array.isArray(w)) ops.push(new Option(atual || "Clique em \"Procurar impressoras do Windows\"", atual || ""));
+  else {
+    ops.push(new Option(w.length ? "Escolha a impressora…" : "Nenhuma impressora encontrada", ""));
+    if (atual && !w.some((p) => p.nome === atual)) ops.push(new Option(`${atual} (não encontrada agora)`, atual));
+    for (const p of w) ops.push(new Option(`${p.nome}${p.driver ? "  —  " + p.driver : ""}`, p.nome));
+  }
+  sel.replaceChildren(...ops);
+  sel.value = atual || "";
+}
+
+function desenharImpressoras() {
+  const caixa = $("#listaImpressoras");
+  if (!caixa) return;
+  caixa.replaceChildren();
+  const unica = estado.cfg.impressoras.length <= 1;
+  for (const imp of estado.cfg.impressoras) {
+    const el = $("#tplImpressora").content.firstElementChild.cloneNode(true);
+    el.dataset.id = imp.id;
+    for (const seg of el.querySelectorAll(".seg[data-k]")) for (const b of seg.children) b.classList.toggle("ativo", String(imp[seg.dataset.k]) === b.dataset.v);
+    for (const inp of el.querySelectorAll("input[data-k]")) inp.value = imp[inp.dataset.k] ?? "";
+    el.querySelector("select[data-k=modoImagem]").value = imp.modoImagem || "padrao";
+    opcoesWindows(el.querySelector("select[data-k=nomeWindows]"), imp.nomeWindows);
+    for (const x of el.querySelectorAll("[data-se]")) x.hidden = x.dataset.se !== imp.tipo;
+    el.querySelector("[data-acao=remover]").hidden = unica;
+    caixa.append(el);
+  }
+  desenharEscolhaImp();
+}
+
+function desenharEscolhaImp() {
+  const imps = estado.cfg.impressoras;
+  const sel = $("#impAtual");
+  sel.replaceChildren(...imps.map((i) => new Option(`${i.nome || "Impressora"} (${i.bobina} mm)`, i.id)));
+  sel.value = estado.cfg.impressoraAtual;
+  $("#escolhaImp").hidden = imps.length <= 1;
+}
+
+function ligarImpressoras() {
+  const caixa = $("#listaImpressoras");
+  const idDe = (e) => e.target.closest(".imp")?.dataset.id;
+  caixa.addEventListener("click", async (e) => {
+    const id = idDe(e); if (!id) return;
+    const b = e.target.closest(".seg[data-k] button");
+    if (b) {
+      e.preventDefault();
+      const k = b.parentElement.dataset.k;
+      await salvarImpressora(id, { [k]: k === "bobina" ? Number(b.dataset.v) : b.dataset.v });
+      desenharImpressoras();
+      if (k === "tipo" && b.dataset.v === "windows" && !Array.isArray(estado.impWindows)) listarImpressoras();
+      return;
+    }
+    const acao = e.target.closest("[data-acao]")?.dataset.acao;
+    if (acao === "teste") {
+      e.preventDefault();
+      const imp = impAtual(id);
+      imprimir([{ i: { id: "teste", nome: "Teste Aliber", complemento: `${imp.nome || "Impressora"} · bobina ${imp.bobina} mm`, preco: 12.34, unidade: "kg", codigo: "0" }, copias: 1 }], id);
+    }
+    if (acao === "remover") {
+      e.preventDefault();
+      if (!confirm("Remover esta impressora do Aliber Etiquetas?")) return;
+      await salvarCfg({ impressoras: estado.cfg.impressoras.filter((i) => i.id !== id) });
+      desenharImpressoras(); marcarSegmentos(); desenharPrevia();
+    }
+  });
+  caixa.addEventListener("change", async (e) => {
+    const id = idDe(e); const k = e.target.dataset?.k; if (!id || !k) return;
+    let v = e.target.value.trim();
+    if (k === "porta") v = Math.max(1, Number(v) || 9100);
+    if (k === "espacoMm") v = Math.max(0, Math.min(20, Number(v) || 0));
+    await salvarImpressora(id, { [k]: v });
+  });
+  $("#btnAddImp").addEventListener("click", async () => {
+    const n = estado.cfg.impressoras.length + 1;
+    let id = "imp" + n; while (estado.cfg.impressoras.some((i) => i.id === id)) id += "x";
+    await salvarCfg({ impressoras: [...estado.cfg.impressoras, { id, nome: `Impressora ${n} (58 mm)`, tipo: "windows", bobina: 58, corte: "total", espacoMm: 0, modoImagem: "padrao", porta: 9100 }] });
+    desenharImpressoras();
+    if (!Array.isArray(estado.impWindows)) listarImpressoras();
+  });
+  $("#btnListarImp").addEventListener("click", listarImpressoras);
+  $("#impAtual").addEventListener("change", async (e) => {
+    await salvarCfg({ impressoraAtual: e.target.value });
+    marcarSegmentos(); desenharPrevia();
+  });
+}
+
+// ----- troca de versão (área do técnico), igual ao Aliber Print
+let chaveTecnico = null;
+const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function ligarVersoes() {
+  $("#btnVersao").addEventListener("click", () => {
+    if (chaveTecnico) return abrirVersoes();
+    $("#senhaTecnico").value = ""; $("#erroTecnico").textContent = "";
+    $("#dlgTecnico").showModal();
+    $("#senhaTecnico").focus();
+  });
+  $("#formTecnico").addEventListener("submit", async (e) => {
+    if (e.submitter?.value !== "entrar") return;
+    e.preventDefault();
+    try {
+      chaveTecnico = await api.entrarTecnico($("#senhaTecnico").value);
+      $("#dlgTecnico").close();
+      abrirVersoes();
+    } catch (err) { $("#erroTecnico").textContent = err.message; }
+  });
+  $("#btnFecharVersoes").addEventListener("click", () => $("#dlgVersoes").close());
+  $("#versoesLista").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-instalar]");
+    if (b) instalarVersao(b.dataset.instalar, b.dataset.antiga === "1");
+  });
+  api.aoMudarAtualizacao((a) => { estado.atualizacao = a; desenharProgresso(); });
+}
+
+async function abrirVersoes() {
+  $("#erroVersoes").textContent = "";
+  $("#versoesAtual").textContent = `Versão instalada neste computador: ${estado.info.versao}.`;
+  $("#versoesLista").innerHTML = `<p class="nota">Buscando as versões publicadas…</p>`;
+  if (!$("#dlgVersoes").open) $("#dlgVersoes").showModal();
+  estado.atualizacao = await api.estadoAtualizacao().catch(() => null);
+  desenharProgresso();
+  try {
+    const { versoes } = await api.versoes(chaveTecnico);
+    $("#versoesLista").innerHTML = versoes.length ? versoes.map((v) => `
+      <div class="versao ${v.instalada ? "atual" : ""}">
+        <div><span class="num">${esc(v.versao)}</span> <span class="quando">${v.data ? new Date(v.data).toLocaleDateString("pt-BR") : ""} · ${v.tamanhoMB} MB${v.instalada ? " · instalada" : v.maisAntiga ? " · mais antiga" : ""}</span></div>
+        <div>${v.instalada ? "" : `<button type="button" class="btn ${v.maisAntiga ? "" : "primario"}" data-instalar="${esc(v.versao)}" data-antiga="${v.maisAntiga ? 1 : 0}">Instalar esta versão</button>`}</div>
+        ${v.notas ? `<div class="notas">${esc(v.notas)}</div>` : ""}
+      </div>`).join("") : `<p class="nota">Nenhuma versão publicada ainda.</p>`;
+  } catch (e) {
+    $("#versoesLista").innerHTML = "";
+    $("#erroVersoes").textContent = e.message;
+    if (/senha do técnico/i.test(e.message)) chaveTecnico = null;
+  }
+}
+
+async function instalarVersao(versao, antiga) {
+  const msg = antiga
+    ? `Voltar para a versão ${versao}?\n\nRecursos criados depois dela deixam de existir. O Aliber Etiquetas fecha por alguns segundos e volta sozinho.`
+    : `Instalar a versão ${versao}?\n\nO Aliber Etiquetas fecha por alguns segundos e volta sozinho. Impressoras, produtos e ajustes são mantidos.`;
+  if (!confirm(msg)) return;
+  try {
+    await api.instalarVersao(chaveTecnico, versao);
+    $$("[data-instalar]").forEach((b) => (b.disabled = true));
+  } catch (e) {
+    $("#erroVersoes").textContent = e.message;
+    if (/senha do técnico/i.test(e.message)) chaveTecnico = null;
+  }
+}
+
+function desenharProgresso() {
+  const box = $("#versoesProgresso");
+  const a = estado.atualizacao;
+  if (!a || a.estado === "parado") { box.hidden = true; return; }
+  box.hidden = false;
+  box.classList.toggle("ruim", a.estado === "erro");
+  box.textContent = {
+    verificando: `Preparando a versão ${a.versao}…`,
+    baixando: `Baixando a versão ${a.versao}… ${a.pct || 0}%`,
+    instalando: `Instalando a versão ${a.versao}. O Aliber Etiquetas vai fechar e voltar em alguns segundos.`,
+    erro: `Não instalou: ${a.erro || "erro desconhecido"}`,
+  }[a.estado] || "";
+  if (a.estado === "erro") $$("[data-instalar]").forEach((b) => (b.disabled = false));
 }
 
 /* ---------------- eventos ---------------- */
@@ -476,15 +657,10 @@ function ligarEventos() {
   });
 
   // configurações
-  for (const s of $$(".seg[data-cfg]")) s.addEventListener("click", async (e) => {
-    const b = e.target.closest("button"); if (!b) return;
-    const v = s.dataset.cfg === "bobina" ? Number(b.dataset.v) : b.dataset.v;
-    await salvarCfg(montarParcial(s.dataset.cfg, v));
-    preencherConfig(); marcarSegmentos();
-  });
+  ligarImpressoras();
+  ligarVersoes();
   for (const el of $$("[data-cfg-in]")) el.addEventListener("change", async () => {
     let v = el.value.trim();
-    if (["espacoMm", "impressora.porta"].includes(el.dataset.cfgIn)) v = Math.max(0, Number(v) || 0);
     await salvarCfg(montarParcial(el.dataset.cfgIn, v));
     if (el.dataset.cfgIn === "pastaPdv") lerPdv();
   });
@@ -493,13 +669,10 @@ function ligarEventos() {
     if (el.dataset.cfgChk === "usarPdv") lerPdv();
   });
   $("#cfgUnidadePadrao").addEventListener("change", async (e) => { await salvarCfg({ unidadePadrao: e.target.value }); montarItens(); desenharLista(); });
-  $("#cfgImpressora").addEventListener("change", (e) => salvarCfg({ impressora: { nomeWindows: e.target.value } }));
-  $("#btnListarImp").addEventListener("click", listarImpressoras);
   $("#btnPasta").addEventListener("click", async () => {
     const p = await api.escolherPasta(estado.cfg.pastaPdv);
     if (p) { await salvarCfg({ pastaPdv: p }); preencherConfig(); lerPdv(); }
   });
-  $("#btnTeste").addEventListener("click", () => imprimir([{ i: { id: "teste", nome: "Teste Aliber", complemento: "Etiqueta de teste", preco: 12.34, unidade: "kg", codigo: "0" }, copias: 1 }]));
   $("#cfgTema").addEventListener("change", async (e) => { await salvarCfg({ tema: e.target.value }); preencherConfig(); });
   $("#btnPastaDados").addEventListener("click", () => api.abrirPastaDados());
   window.addEventListener("resize", debounce(desenharPrevia, 150));
@@ -510,8 +683,9 @@ function ligarEventos() {
 async function iniciar() {
   await E.carregarFontes();
   const [cfg, local, info] = await Promise.all([api.config(), api.produtosLocais(), api.info()]);
-  estado.cfg = cfg; estado.local = local;
+  estado.cfg = cfg; estado.local = local; estado.info = info;
   $("#infoApp").textContent = `Aliber Etiquetas ${info.versao} — Aliber Informática / Sistemas. Dados salvos em ${info.pastaDados}.`;
+  $("#txtVersao").textContent = `Versão instalada: ${info.versao}. Para instalar outra (mais nova ou voltar a uma anterior), use a área do técnico.`;
   preencherConfig();
   marcarSegmentos();
   ligarEventos();
@@ -519,8 +693,7 @@ async function iniciar() {
   desenharLista();
   desenharPrevia();
   lerPdv();
-  if (info.plataforma === "win32" && cfg.impressora.tipo === "windows") listarImpressoras();
-  else $("#cfgImpressora").replaceChildren(new Option(cfg.impressora.nomeWindows || "Escolha a impressora…", cfg.impressora.nomeWindows || ""));
+  if (info.plataforma === "win32" && cfg.impressoras.some((i) => i.tipo === "windows")) listarImpressoras();
   document.title = "Aliber Etiquetas";
   document.body.dataset.pronto = "1";
 }

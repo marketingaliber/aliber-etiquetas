@@ -1,0 +1,46 @@
+# Botão "Publicar versão" (aba Actions > Publicar versão > Run workflow).
+# Pega os arquivos que o Claude deixou no ramo "versao-X.Y.Z", cria a release
+# vX.Y.Z com eles (o técnico passa a ver a versão em "Escolher versão") e apaga o ramo.
+name: Publicar versão
+
+on:
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: "Número da versão (ex.: 1.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conferir o número da versão
+        run: |
+          echo "${{ inputs.versao }}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "Use o formato 1.2.3"; exit 1; }
+
+      - name: Baixar os arquivos da versão
+        uses: actions/checkout@v4
+        with:
+          ref: versao-${{ inputs.versao }}
+
+      - name: Conferir os arquivos
+        run: |
+          for f in AliberEtiquetas-Instalador.exe AliberEtiquetas-Instalador.exe.blockmap latest.yml NOTAS.md; do
+            test -f "$f" || { echo "Falta o arquivo $f"; exit 1; }
+          done
+          grep -q "^version: ${{ inputs.versao }}$" latest.yml || { echo "O latest.yml não é da versão ${{ inputs.versao }}"; exit 1; }
+
+      - name: Criar a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ inputs.versao }}" \
+            --repo "${{ github.repository }}" --target main \
+            --title "Aliber Etiquetas ${{ inputs.versao }}" --notes-file NOTAS.md \
+            AliberEtiquetas-Instalador.exe AliberEtiquetas-Instalador.exe.blockmap latest.yml
+
+      - name: Apagar o ramo temporário
+        run: git push origin --delete "versao-${{ inputs.versao }}"
