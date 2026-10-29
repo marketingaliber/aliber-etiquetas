@@ -1,0 +1,44 @@
+// Abre o app de verdade (Electron) com dados de teste e tira fotos da tela.
+const { _electron: electron } = require("playwright");
+const path = require("path");
+(async () => {
+  const S = process.env.S;
+  const app = await electron.launch({ executablePath: require("electron"), args: [path.join(__dirname, ".."), "--no-sandbox"], env: { ...process.env, ALIBER_DADOS: S + "/dados" } });
+  const w = await app.firstWindow();
+  w.on("console", (m) => console.log("console:", m.text()));
+  w.on("pageerror", (e) => console.log("erro:", e.message));
+  await w.setViewportSize({ width: 1366, height: 768 });
+  await w.waitForSelector("body[data-pronto]", { timeout: 20000 });
+  await w.waitForSelector(".status-pdv.ok, .status-pdv.ruim", { timeout: 20000 });
+  console.log("status:", await w.textContent("#statusPdv"));
+  console.log("info:", await w.textContent("#infoPdv"));
+  await w.fill("#busca", "tomate"); await w.waitForTimeout(300);
+  console.log("tomate:", (await w.textContent(".item")).replace(/\s+/g, " "));
+  await w.click(".item >> nth=0");
+  await w.waitForTimeout(300);
+  await w.screenshot({ path: S + "/tela0.png" });
+  await w.fill("#busca", ""); await w.waitForTimeout(300);
+  await w.click(".item >> nth=0 >> input[type=checkbox]");
+  await w.click(".item >> nth=2 >> input[type=checkbox]");
+  await w.waitForTimeout(400);
+  await w.screenshot({ path: S + "/tela1.png" });
+  // edita e vê a prévia
+  await w.click(".item:has-text('MORANGO')");
+  await w.check("#edOferta"); await w.fill("#edDe", "12,90");
+  await w.click(".seg[data-campo=formato] button[data-v=deitada]");
+  await w.waitForTimeout(800);
+  await w.screenshot({ path: S + "/tela2.png" });
+  await w.click(".aba[data-ver=config]");
+  await w.waitForTimeout(300);
+  await w.screenshot({ path: S + "/tela3.png" });
+  // impressão via rede para um "falso" servidor 9100
+  await w.click(".seg[data-cfg='impressora.tipo'] button[data-v=rede]");
+  await w.fill("[data-cfg-in='impressora.ip']", "127.0.0.1"); await w.press("[data-cfg-in='impressora.ip']", "Tab");
+  await w.fill("[data-cfg-in='impressora.porta']", "9199"); await w.press("[data-cfg-in='impressora.porta']", "Tab");
+  await w.click(".aba[data-ver=etiquetas]");
+  await w.click("#btnImprimirSel");
+  await w.waitForSelector(".aviso", { timeout: 10000 });
+  console.log("aviso:", await w.textContent(".aviso"));
+  await w.waitForTimeout(500);
+  await app.close();
+})().catch((e) => { console.error(e); process.exit(1); });

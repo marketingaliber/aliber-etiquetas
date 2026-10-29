@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="pt-BR" data-tema="escuro">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'">
+<title>Aliber Etiquetas</title>
+<link rel="stylesheet" href="fontes/fontes.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topo">
+  <div class="marca">
+    <div class="placa"><img src="../app/assets/logo.png" alt="Aliber"></div>
+    <div class="nome-app">Etiquetas</div>
+  </div>
+  <nav class="abas" role="tablist">
+    <button class="aba ativo" data-ver="etiquetas">Etiquetas</button>
+    <button class="aba" data-ver="config">Configurações</button>
+  </nav>
+  <div class="status-pdv" id="statusPdv"><span class="ponto"></span><span class="txt">Lendo o PDV+…</span></div>
+  <button class="btn fantasma" id="btnAtualizar" title="Ler de novo os produtos e preços do PDV+">
+    <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg> Atualizar preços
+  </button>
+</header>
+
+<main id="verEtiquetas" class="ver etiquetas">
+  <section class="lista-col">
+    <div class="busca-linha">
+      <label class="busca">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="busca" type="search" placeholder="Buscar produto pelo nome ou código" autocomplete="off">
+      </label>
+      <button class="btn" id="btnAvulso"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Produto avulso</button>
+    </div>
+    <div class="filtros" id="filtros">
+      <button class="chip ativo" data-f="todos">Todos <b id="nTodos">0</b></button>
+      <button class="chip" data-f="kg">Por kg <b id="nKg">0</b></button>
+      <button class="chip" data-f="mudou">Preço mudou <b id="nMudou">0</b></button>
+      <button class="chip" data-f="avulsos">Avulsos <b id="nAvulsos">0</b></button>
+    </div>
+    <div class="selecao" id="barraSelecao">
+      <span id="txtSelecao">Nenhuma selecionada</span>
+      <button class="link" id="btnSelVisiveis">Selecionar os da lista</button>
+      <button class="link" id="btnSelLimpar">Limpar seleção</button>
+    </div>
+    <div class="lista" id="lista" tabindex="0"></div>
+  </section>
+
+  <section class="lado">
+    <div class="cartao">
+      <div class="cartao-cab"><h3>Modelo da etiqueta</h3><span class="dica" id="medida">80 × 55 mm</span></div>
+      <div class="campo-linha">
+        <span class="rotulo">Formato</span>
+        <div class="seg" data-campo="formato">
+          <button data-v="empe">Em pé</button><button data-v="deitada">Deitada (comprida)</button>
+        </div>
+      </div>
+      <div class="campo-linha">
+        <span class="rotulo">Tamanho</span>
+        <div class="seg" data-campo="tamanho">
+          <button data-v="P">Pequena</button><button data-v="M">Média</button><button data-v="G">Grande</button>
+        </div>
+      </div>
+      <div class="campo-linha">
+        <span class="rotulo">Estilo</span>
+        <div class="seg" data-campo="estilo">
+          <button data-v="padrao">Padrão</button><button data-v="oferta">Oferta (faixa preta)</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="previa-caixa">
+      <div class="papel" id="papel"><canvas id="previa"></canvas></div>
+      <p class="dica centro" id="dicaPrevia">Escolha um produto na lista para ver a etiqueta.</p>
+    </div>
+
+    <div class="cartao" id="editor" hidden>
+      <div class="cartao-cab"><h3 id="edTitulo">Produto</h3><span class="etq" id="edOrigem">PDV+</span></div>
+      <div class="grade2">
+        <label class="campo largo">Nome na etiqueta<input id="edNome" maxlength="120"></label>
+        <label class="campo largo">Complemento <span class="opc">(opcional, ex.: Orgânico, Selecionada)</span><input id="edComp" maxlength="80"></label>
+        <label class="campo">Vendido por<select id="edUnidade"></select></label>
+        <label class="campo">Preço (R$)<input id="edPreco" inputmode="decimal"></label>
+        <label class="campo check"><input type="checkbox" id="edOferta"> Em oferta</label>
+        <label class="campo" id="campoDe">Preço "de" (R$) <span class="opc">riscado</span><input id="edDe" inputmode="decimal" placeholder="opcional"></label>
+      </div>
+      <p class="nota" id="edNota"></p>
+      <div class="acoes-ed">
+        <button class="link" id="btnRestaurar" hidden>Voltar ao nome e preço do PDV+</button>
+        <button class="link perigo" id="btnExcluir" hidden>Excluir produto avulso</button>
+      </div>
+    </div>
+
+    <div class="imprimir-barra">
+      <label class="copias">Cópias <input type="number" id="copiasAtual" min="1" max="50" value="1"></label>
+      <button class="btn" id="btnImprimirEsta" disabled>Imprimir esta</button>
+      <button class="btn primario" id="btnImprimirSel" disabled>
+        <svg viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>
+        <span id="txtImprimirSel">Imprimir selecionadas</span>
+      </button>
+    </div>
+  </section>
+</main>
+
+<main id="verConfig" class="ver config" hidden>
+  <div class="config-grade">
+    <section class="cartao">
+      <h3>Impressora</h3>
+      <div class="seg" data-cfg="impressora.tipo">
+        <button data-v="windows">USB (impressora do Windows)</button><button data-v="rede">Rede (IP)</button>
+      </div>
+      <div data-mostrar="windows">
+        <label class="campo">Impressora
+          <div class="com-botao"><select id="cfgImpressora"></select><button class="btn fantasma" id="btnListarImp" title="Procurar de novo">Procurar</button></div>
+        </label>
+        <p class="nota">Use a Elgin i8 ou i9 instalada com o driver da Elgin. O app envia a etiqueta direto (modo RAW), sem mexer nas configurações do driver.</p>
+      </div>
+      <div data-mostrar="rede" class="grade2">
+        <label class="campo">IP da impressora<input data-cfg-in="impressora.ip" placeholder="192.168.0.100"></label>
+        <label class="campo">Porta<input data-cfg-in="impressora.porta" inputmode="numeric" placeholder="9100"></label>
+      </div>
+      <button class="btn" id="btnTeste">Imprimir etiqueta de teste</button>
+    </section>
+
+    <section class="cartao">
+      <h3>Papel e corte</h3>
+      <label class="campo">Largura da bobina
+        <div class="seg" data-cfg="bobina"><button data-v="80">80 mm (i8 / i9)</button><button data-v="58">58 mm</button></div>
+      </label>
+      <label class="campo">Corte da guilhotina
+        <div class="seg" data-cfg="corte"><button data-v="total">Total</button><button data-v="parcial">Parcial</button><button data-v="nenhum">Sem corte</button></div>
+      </label>
+      <label class="campo">Espaço extra entre etiquetas (mm)<input data-cfg-in="espacoMm" inputmode="numeric" placeholder="0"></label>
+      <p class="nota">Se a guilhotina não cortar a etiqueta toda (deixando uma "aba"), use corte Parcial. Se estiver cortando em cima do texto, aumente o espaço extra.</p>
+    </section>
+
+    <section class="cartao">
+      <h3>O que aparece na etiqueta</h3>
+      <label class="campo">Nome da loja (rodapé)<input data-cfg-in="loja" maxlength="40" placeholder="Ex.: Hortifruti Bom Preço"></label>
+      <label class="campo check"><input type="checkbox" data-cfg-chk="mostrarData"> Mostrar a data no rodapé</label>
+      <label class="campo">Texto antes da data<input data-cfg-in="textoData" maxlength="30" placeholder="Preço de"></label>
+      <label class="campo">Texto da faixa de oferta<input data-cfg-in="textoOferta" maxlength="24" placeholder="OFERTA"></label>
+      <label class="campo check"><input type="checkbox" data-cfg-chk="mostrarCodigo"> Mostrar o código do produto</label>
+    </section>
+
+    <section class="cartao">
+      <h3>PDV+ (Aliber Sistema)</h3>
+      <label class="campo check"><input type="checkbox" data-cfg-chk="usarPdv"> Buscar produtos e preços no PDV+</label>
+      <label class="campo">Pasta do PDV+
+        <div class="com-botao"><input data-cfg-in="pastaPdv" placeholder="C:\PDV+"><button class="btn fantasma" id="btnPasta">Escolher</button></div>
+      </label>
+      <label class="campo">Quando o PDV+ não informar a unidade, usar<select data-cfg-sel="unidadePadrao" id="cfgUnidadePadrao"></select></label>
+      <p class="nota">O app só <b>lê</b> o PDV+: copia o banco e lê a cópia. Nada é gravado no PDV+. Nome, preço e unidade alterados aqui valem só para a etiqueta.</p>
+      <p class="nota tecnico" id="infoPdv"></p>
+    </section>
+
+    <section class="cartao">
+      <h3>Sobre</h3>
+      <p class="nota" id="infoApp"></p>
+      <div class="com-botao">
+        <select id="cfgTema"><option value="escuro">Tema escuro</option><option value="claro">Tema claro</option></select>
+        <button class="btn fantasma" id="btnPastaDados">Abrir pasta de dados</button>
+      </div>
+    </section>
+  </div>
+</main>
+
+<dialog id="dlgAvulso">
+  <form method="dialog" class="dlg">
+    <h3>Produto avulso</h3>
+    <p class="nota">Para itens que não estão no PDV+ (ou se o cliente não usa o PDV+). Fica salvo neste computador.</p>
+    <label class="campo">Nome<input id="avNome" required maxlength="120" placeholder="Ex.: Tomate Italiano"></label>
+    <div class="grade2">
+      <label class="campo">Preço (R$)<input id="avPreco" inputmode="decimal" required placeholder="0,00"></label>
+      <label class="campo">Vendido por<select id="avUnidade"></select></label>
+      <label class="campo">Complemento <span class="opc">(opcional)</span><input id="avComp" maxlength="80"></label>
+      <label class="campo">Código <span class="opc">(opcional)</span><input id="avCodigo" maxlength="30"></label>
+    </div>
+    <div class="dlg-acoes">
+      <button class="btn fantasma" value="cancelar" formnovalidate>Cancelar</button>
+      <button class="btn primario" value="salvar" id="avSalvar">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="avisos" id="avisos" aria-live="polite"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

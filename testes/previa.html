@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="../panel/fontes/fontes.css">
+<style>body{background:#888;margin:10px;font:12px sans-serif} .g{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start} figure{margin:0;background:#fff;padding:4px} figcaption{background:#888;color:#fff}</style>
+<div class="g" id="g"></div>
+<script type="module">
+import * as E from "../panel/etiqueta.js";
+await E.carregarFontes();
+const itens = [
+  { nome: "Tomate Italiano", preco: 7.99, unidade: "kg", codigo: 123 },
+  { nome: "Banana Prata", complemento: "Selecionada", preco: 5.49, unidade: "kg" },
+  { nome: "Alface Crespa Hidropônica", preco: 3.5, unidade: "un" },
+  { nome: "Morango", preco: 8.9, precoDe: 12.9, unidade: "bandeja", oferta: true },
+  { nome: "Maçã Gala Importada Argentina", preco: 14.98, unidade: "kg", complemento: "Orgânica" },
+  { nome: "Couve", preco: 2.99, unidade: "maco" },
+];
+const modelo = { bobina: 80, loja: "Hortifruti Modelo", mostrarData: true, textoData: "Preço de", textoOferta: "OFERTA" };
+const g = document.getElementById("g");
+const combos = [["empe","P"],["empe","M"],["empe","G"],["deitada","P"],["deitada","M"],["deitada","G"]];
+for (const [formato,tamanho] of combos) for (const it of (new URLSearchParams(location.search).get("todos") ? itens : itens.slice(0,4))) {
+  const c = E.binarizar(E.desenharEtiqueta(it, { ...modelo, formato, tamanho, estilo: "padrao" }));
+  const f = document.createElement("figure"); c.style.width = (c.width/2)+"px";
+  f.append(c); const cap=document.createElement("figcaption"); cap.textContent=formato+" "+tamanho; f.append(cap); g.append(f);
+}
+document.title="ok";
+</script>
